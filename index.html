@@ -344,7 +344,14 @@
         <span class="col-pill">vet_phone</span>
       </div>
       <div style="margin-top:8px;color:#5080C0">Each row = one cat. Leave cells blank if not applicable.<br>
-      ✅ Your current headers are supported: <code style="background:#e8f0ff;padding:2px 6px;border-radius:4px;font-size:0.8rem">Name, Age, Color, MealTime, SpecialTreatment, FeedingLocation, Medicine</code></div>
+      ✅ Your current headers are supported: <code style="background:#e8f0ff;padding:2px 6px;border-radius:4px;font-size:0.8rem">Name, Age, Color, MealTime, SpecialTreatment, FeedingLocation, Medicine</code><br><br>
+      🏠 <strong>For the House Supplies section:</strong> add a second sheet tab named <code style="background:#e8f0ff;padding:2px 6px;border-radius:4px;font-size:0.8rem">Supplies</code> with columns:
+      <code style="background:#e8f0ff;padding:2px 6px;border-radius:4px;font-size:0.8rem">Category, Item, Location, Notes</code><br>
+      Then publish that tab as CSV too and paste its URL below.</div>
+      <div class="url-input-wrap" style="margin-top:14px">
+        <label>📎 Supplies Sheet URL (optional):</label>
+        <input type="text" id="suppliesUrl" placeholder="https://docs.google.com/spreadsheets/d/.../pub?gid=1&single=true&output=csv" />
+      </div>
     </div>
 
     <div class="url-input-wrap">
@@ -386,6 +393,9 @@
 
   <div class="cat-selector" id="catSelector"></div>
   <div class="main-card" id="mainCard"></div>
+
+<!-- HOUSE SUPPLIES SECTION -->
+<div id="suppliesSection" style="max-width:780px;margin:0 auto 60px;position:relative;z-index:1;padding:0 16px"></div>
 </div>
 
 <script>
@@ -395,6 +405,8 @@ let currentCat = 0;
 let currentTab = 0;
 let speaking = false;
 let sheetUrl = '';
+let suppliesUrl = '';
+let suppliesData = []; // [{category, item, location, notes}]
 
 const COLORS = ['#C9B8E8','#F4B8C8','#FFD166','#B8E8D4','#B8D8F4','#FFD6B0'];
 const GRADIENTS = [
@@ -493,6 +505,33 @@ function parseCSV(text) {
     });
 }
 
+function resolveEmoji(explicitEmoji, colorDesc) {
+  if (explicitEmoji) return explicitEmoji;
+  if (!colorDesc) return '🐱';
+  const c = colorDesc.toLowerCase();
+
+  // Patterns → emoji
+  if (c.includes('tabby') && c.includes('orange')) return '🐱';
+  if (c.includes('orange') || c.includes('ginger') || c.includes('red')) return '🟠';
+  if (c.includes('tabby') && c.includes('grey')) return '🐈';
+  if (c.includes('tabby') && c.includes('brown')) return '🐈';
+  if (c.includes('tabby')) return '🐈';
+  if (c.includes('calico')) return '🐈‍⬛';
+  if (c.includes('tortoise') || c.includes('tortie')) return '🐈‍⬛';
+  if (c.includes('black') && c.includes('white')) return '🐈‍⬛';
+  if (c.includes('black')) return '🖤';
+  if (c.includes('white')) return '🤍';
+  if (c.includes('grey') || c.includes('gray') || c.includes('silver') || c.includes('blue')) return '🐈';
+  if (c.includes('brown') || c.includes('chocolate') || c.includes('cinnamon')) return '🐻';
+  if (c.includes('cream') || c.includes('buff') || c.includes('beige')) return '🐱';
+  if (c.includes('spotted') || c.includes('spot')) return '🐆';
+  if (c.includes('striped') || c.includes('stripe')) return '🐯';
+  if (c.includes('point') || c.includes('siamese')) return '😺';
+  if (c.includes('tuxedo')) return '🐈‍⬛';
+  if (c.includes('fluffy') || c.includes('long')) return '🦁';
+  return '🐱';
+}
+
 function rowToCat(row, idx) {
   const color = COLORS[idx % COLORS.length];
   const gradient = GRADIENTS[idx % GRADIENTS.length];
@@ -510,6 +549,7 @@ function rowToCat(row, idx) {
   const age = get('age');
   const catColor = get('color');
   const mealTime = get('mealtime', 'meal_time', 'meal1_time');
+  const foodType = get('foodtype', 'food_type', 'food', 'foodbrand');
   const specialTreatment = get('specialtreatment', 'special_treatment', 'feeding_note');
   const feedingLocation = get('feedinglocation', 'feeding_location', 'supply1_loc');
   const medicine = get('medicine', 'med1_name');
@@ -540,10 +580,11 @@ function rowToCat(row, idx) {
 
   return {
     name: name || 'Cat',
-    emoji: get('emoji') || '🐱',
+    emoji: resolveEmoji(get('emoji'), get('color')),
     breed,
     personality: (get('personality') || (specialTreatment ? specialTreatment.substring(0,60) : '')).split(',').map(s => s.trim()).filter(Boolean),
     color, bgGradient: gradient,
+    foodType,
     feeding: meals.length ? meals : [{ time: 'See notes', desc: specialTreatment || 'No feeding info added yet' }],
     feedingNote: specialTreatment,
     supplies,
@@ -562,6 +603,18 @@ function useDemoData() {
   document.getElementById('setupScreen').style.display = 'none';
   cats = demoData.map((r, i) => rowToCat(r, i));
   currentCat = 0; currentTab = 0;
+  suppliesData = [
+    {category:'Food & Water',item:'Dry kibble bags',location:'Bottom kitchen cabinet, left door',notes:''},
+    {category:'Food & Water',item:'Wet food pouches',location:'Pantry, second shelf',notes:'Each cat has their own flavor — check labels!'},
+    {category:'Food & Water',item:'Water fountain filter',location:'Under the sink',notes:'Replace monthly'},
+    {category:'Litter & Cleaning',item:'Litter bags (Fresh Step)',location:'Laundry room closet',notes:''},
+    {category:'Litter & Cleaning',item:'Litter scoop',location:'On top of each litter box',notes:''},
+    {category:'Litter & Cleaning',item:'Enzyme spray (accidents)',location:'Under bathroom sink',notes:'Spray, wait 5 min, wipe'},
+    {category:'Toys & Enrichment',item:'Feather wands',location:'Hanging on bedroom door handle',notes:''},
+    {category:'Toys & Enrichment',item:'Treat puzzle toys',location:'TV drawer, bottom',notes:'Fill with a few kibble pieces'},
+    {category:'Other Household',item:'Carrier bags',location:'Hall closet, top shelf',notes:'Use only for vet trips'},
+    {category:'Other Household',item:'Extra towels (cat)',location:'Linen closet, bottom pile',notes:'Orange ones are for cats only!'},
+  ];
   launchApp();
 }
 
@@ -572,6 +625,8 @@ function loadFromSheet() {
   }
   document.getElementById('urlError').style.display = 'none';
   sheetUrl = url;
+  const sUrl = document.getElementById('suppliesUrl') ? document.getElementById('suppliesUrl').value.trim() : '';
+  suppliesUrl = sUrl;
   fetchSheet(url);
 }
 
@@ -633,6 +688,30 @@ function launchApp() {
   renderEmergency();
   renderSelector();
   renderCard();
+  if (suppliesData.length > 0) {
+    renderSuppliesSection(suppliesData);
+  } else if (suppliesUrl) {
+    fetchSupplies(suppliesUrl);
+  } else {
+    renderSuppliesSection([]);
+  }
+}
+
+function fetchSupplies(url) {
+  document.getElementById('suppliesSection').innerHTML = '<div style="text-align:center;padding:20px;color:#9B7B65;font-weight:700">🔄 Loading supplies...</div>';
+  tryFetchWithFallbacks(url)
+    .then(csvText => {
+      const rows = parseCSV(csvText);
+      suppliesData = rows.filter(r => {
+        const item = Object.values(r).find((v,i) => Object.keys(r)[i].toLowerCase() === 'item');
+        return item && item.trim() !== '';
+      }).map(r => {
+        const get = (key) => { const k = Object.keys(r).find(h => h.toLowerCase() === key.toLowerCase()); return k ? r[k] : ''; };
+        return { category: get('category') || 'General', item: get('item'), location: get('location'), notes: get('notes') };
+      });
+      renderSuppliesSection(suppliesData);
+    })
+    .catch(() => renderSuppliesSection([]));
 }
 
 // ── EMERGENCY BAR ──
@@ -694,6 +773,14 @@ function renderCard() {
       <!-- FEEDING TAB: MealTime + FeedingLocation -->
       <div class="tab-panel ${currentTab===0?'active':''}">
         <div class="section-title">🍽️ Feeding Schedule</div>
+        ${cat.foodType ? `
+          <div style="display:inline-flex;align-items:center;gap:8px;background:var(--cream);border:2px solid #F0E0D0;border-radius:14px;padding:8px 16px;margin-bottom:14px;">
+            <span style="font-size:1.2rem">🥫</span>
+            <div>
+              <div style="font-size:0.75rem;font-weight:800;color:#9B7B65;text-transform:uppercase;letter-spacing:0.5px">Food Type</div>
+              <div style="font-weight:800;font-size:0.95rem;color:var(--deep)">${cat.foodType}</div>
+            </div>
+          </div>` : ''}
         ${cat.feeding.length === 0
           ? `<div class="error-card"><div class="emoji">🍽️</div>No feeding info yet — add MealTime in the sheet!</div>`
           : `<div class="meal-grid">${cat.feeding.map(f => `
@@ -751,7 +838,7 @@ function speakCat() {
   const cat = cats[currentCat];
   let text = '';
   if (currentTab === 0) {
-    text = `Feeding guide for ${cat.name}. Age and color: ${cat.breed}. `;
+    text = `Feeding guide for ${cat.name}. Age and color: ${cat.breed}. ${cat.foodType ? 'Food type: ' + cat.foodType + '.' : ''} `;
     text += cat.feeding.map(f => `Meal time: ${f.time}. ${f.desc.replace(/\n/g, ', ')}.`).join(' ');
     if (cat.supplies.length) text += ' Feeding location: ' + cat.supplies.map(s => s.loc).join(', ') + '.';
   } else if (currentTab === 1) {
@@ -763,13 +850,107 @@ function speakCat() {
     else text += cat.meds.map(m => `${m.name}. ${m.schedule}. ${m.note}`).join('. ');
   }
   const utter = new SpeechSynthesisUtterance(text);
-  utter.rate = 0.92; utter.pitch = 1.05;
+  utter.rate = 0.78;   // slow & calm
+  utter.pitch = 0.95;  // slightly warm, not too high
+  utter.volume = 1;
+
+  // Pick the nicest available voice — prefer natural/female English voices
+  const voices = speechSynthesis.getVoices();
+  const preferred = [
+    'Samantha', 'Karen', 'Moira', 'Tessa',   // macOS/iOS naturals
+    'Google UK English Female',                // Chrome
+    'Microsoft Aria', 'Microsoft Jenny',       // Edge
+    'Zira', 'Susan',                           // Windows fallbacks
+  ];
+  let chosen = null;
+  for (const name of preferred) {
+    chosen = voices.find(v => v.name.includes(name) && v.lang.startsWith('en'));
+    if (chosen) break;
+  }
+  // Fallback: any English female-sounding voice
+  if (!chosen) chosen = voices.find(v => v.lang.startsWith('en-') && v.name.toLowerCase().includes('female'));
+  // Last resort: any English voice
+  if (!chosen) chosen = voices.find(v => v.lang.startsWith('en'));
+  if (chosen) utter.voice = chosen;
+
   utter.onend = () => { speaking = false; const b = document.getElementById('ttsBtn'); if(b){b.classList.remove('speaking');b.innerHTML='🔊 Read Aloud';} };
   speaking = true;
   document.getElementById('ttsBtn').classList.add('speaking');
   document.getElementById('ttsBtn').innerHTML = '⏹ Stop';
-  speechSynthesis.speak(utter);
+
+  // Voices may not be loaded yet on first call — wait if needed
+  if (speechSynthesis.getVoices().length === 0) {
+    speechSynthesis.onvoiceschanged = () => { speechSynthesis.speak(utter); };
+  } else {
+    speechSynthesis.speak(utter);
+  }
 }
+function renderSuppliesSection(data) {
+  const section = document.getElementById('suppliesSection');
+  if (!section) return;
+
+  const categoryIcons = {
+    'food': '🥣', 'food & water': '🥣', 'water': '💧',
+    'litter': '🪣', 'litter & cleaning': '🪣', 'cleaning': '🧹',
+    'toys': '🎾', 'toys & enrichment': '🎾', 'enrichment': '🧶',
+    'other': '🏠', 'other household': '🏠', 'household': '🏠', 'general': '📦',
+  };
+
+  const getIcon = (cat) => {
+    const c = (cat || '').toLowerCase();
+    for (const [key, icon] of Object.entries(categoryIcons)) {
+      if (c.includes(key)) return icon;
+    }
+    return '📦';
+  };
+
+  if (data.length === 0) {
+    section.innerHTML = `
+      <div style="background:white;border-radius:28px;box-shadow:var(--card-shadow);padding:28px 32px;">
+        <div style="font-family:'Fredoka One',cursive;font-size:1.5rem;color:var(--orange);margin-bottom:6px">🏠 House Supplies</div>
+        <div style="color:#9B7B65;font-size:0.9rem;font-weight:600">
+          Add a second tab named <strong>Supplies</strong> to your Google Sheet with columns
+          <code style="background:#FFF3EA;padding:2px 8px;border-radius:6px">Category, Item, Location, Notes</code>
+          then paste its published CSV URL in the setup screen.
+        </div>
+      </div>`;
+    return;
+  }
+
+  // Group by category
+  const grouped = {};
+  data.forEach(row => {
+    const cat = row.category || 'General';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(row);
+  });
+
+  const html = `
+    <div style="background:white;border-radius:28px;box-shadow:var(--card-shadow);overflow:hidden;">
+      <div style="background:linear-gradient(135deg,#FFE8D0,#FFD6B0);padding:24px 32px 18px;border-bottom:2px dashed #F0E0D0;">
+        <div style="font-family:'Fredoka One',cursive;font-size:1.8rem;color:var(--orange);text-shadow:2px 2px 0 #FFD6B0">🏠 House Supplies</div>
+        <div style="color:#8B6B55;font-size:0.88rem;font-weight:700;margin-top:4px">Where to find everything around the house</div>
+      </div>
+      <div style="padding:24px 28px 32px;">
+        ${Object.entries(grouped).map(([cat, items]) => `
+          <div style="margin-bottom:24px;">
+            <div style="font-family:'Fredoka One',cursive;font-size:1.15rem;color:var(--deep);margin-bottom:12px;display:flex;align-items:center;gap:8px">
+              ${getIcon(cat)} ${cat}
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">
+              ${items.map(s => `
+                <div style="background:var(--cream);border-radius:16px;padding:14px 16px;border:2px solid #F0E0D0;">
+                  <div style="font-weight:800;font-size:0.92rem;color:var(--deep)">${s.item}</div>
+                  <div style="font-size:0.82rem;color:#9B7B65;margin-top:4px">📍 ${s.location || 'Location not set'}</div>
+                  ${s.notes ? `<div style="font-size:0.8rem;color:#B07050;margin-top:5px;font-style:italic">💬 ${s.notes}</div>` : ''}
+                </div>`).join('')}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  section.innerHTML = html;
+}
+
 function stopSpeech() {
   speechSynthesis.cancel(); speaking = false;
   const b = document.getElementById('ttsBtn');
