@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🐱 Cat Sitting By Igal</title>
+<title>🐱 Cat Sitting Guide</title>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -343,7 +343,8 @@
         <span class="col-pill">vet_name</span>
         <span class="col-pill">vet_phone</span>
       </div>
-      <div style="margin-top:8px;color:#5080C0">Each row = one cat. Leave cells blank if not applicable.</div>
+      <div style="margin-top:8px;color:#5080C0">Each row = one cat. Leave cells blank if not applicable.<br>
+      ✅ Your current headers are supported: <code style="background:#e8f0ff;padding:2px 6px;border-radius:4px;font-size:0.8rem">Name, Age, Color, MealTime, SpecialTreatment, FeedingLocation, Medicine</code></div>
     </div>
 
     <div class="url-input-wrap">
@@ -495,28 +496,59 @@ function parseCSV(text) {
 function rowToCat(row, idx) {
   const color = COLORS[idx % COLORS.length];
   const gradient = GRADIENTS[idx % GRADIENTS.length];
+
+  // Support both original headers and your custom headers (case-insensitive)
+  const get = (...keys) => {
+    for (const k of keys) {
+      const found = Object.keys(row).find(h => h.toLowerCase() === k.toLowerCase());
+      if (found && row[found]) return row[found];
+    }
+    return '';
+  };
+
+  const name = get('name');
+  const age = get('age');
+  const catColor = get('color');
+  const mealTime = get('mealtime', 'meal_time', 'meal1_time');
+  const specialTreatment = get('specialtreatment', 'special_treatment', 'feeding_note');
+  const feedingLocation = get('feedinglocation', 'feeding_location', 'supply1_loc');
+  const medicine = get('medicine', 'med1_name');
+
+  // Build meals
   const meals = [];
-  if (row.meal1_time) meals.push({ time: row.meal1_time, desc: row.meal1_desc });
-  if (row.meal2_time) meals.push({ time: row.meal2_time, desc: row.meal2_desc });
-  if (row.meal3_time) meals.push({ time: row.meal3_time, desc: row.meal3_desc });
+  if (mealTime) meals.push({ time: mealTime, desc: feedingLocation ? 'Feed at: ' + feedingLocation : 'See feeding instructions' });
+  // also support old multi-meal columns
+  if (get('meal2_time')) meals.push({ time: get('meal2_time'), desc: get('meal2_desc') });
+  if (get('meal3_time')) meals.push({ time: get('meal3_time'), desc: get('meal3_desc') });
+
+  // Build supplies
   const supplies = [];
+  if (feedingLocation) supplies.push({ icon: '📍', label: 'Feeding Location', loc: feedingLocation });
   for (let i = 1; i <= 4; i++) {
-    if (row[`supply${i}_label`]) supplies.push({ icon: row[`supply${i}_icon`] || '📦', label: row[`supply${i}_label`], loc: row[`supply${i}_loc`] || '' });
+    if (get(`supply${i}_label`)) supplies.push({ icon: get(`supply${i}_icon`) || '📦', label: get(`supply${i}_label`), loc: get(`supply${i}_loc`) });
   }
+
+  // Build meds
   const meds = [];
-  for (let i = 1; i <= 2; i++) {
-    if (row[`med${i}_name`]) meds.push({ name: row[`med${i}_name`], schedule: row[`med${i}_schedule`] || '', note: row[`med${i}_note`] || '' });
+  if (medicine) meds.push({ name: medicine, schedule: get('med1_schedule', 'medicine_schedule') || 'As needed', note: get('med1_note', 'medicine_note') || '' });
+  for (let i = 2; i <= 2; i++) {
+    if (get(`med${i}_name`)) meds.push({ name: get(`med${i}_name`), schedule: get(`med${i}_schedule`) || '', note: get(`med${i}_note`) || '' });
   }
+
+  // Breed/description: combine age + color if no breed column
+  const breed = get('breed') || [age ? age + ' yrs' : '', catColor ? catColor : ''].filter(Boolean).join(' · ');
+
   return {
-    name: row.name || 'Cat',
-    emoji: row.emoji || '🐱',
-    breed: row.breed || '',
-    personality: (row.personality || '').split(',').map(s => s.trim()).filter(Boolean),
+    name: name || 'Cat',
+    emoji: get('emoji') || '🐱',
+    breed,
+    personality: (get('personality') || (specialTreatment ? specialTreatment.substring(0,60) : '')).split(',').map(s => s.trim()).filter(Boolean),
     color, bgGradient: gradient,
-    feeding: meals,
-    feedingNote: row.feeding_note || '',
-    supplies, meds,
-    emergency: row.emergency_name ? { name: row.emergency_name, phone: row.emergency_phone, vetName: row.vet_name, vetPhone: row.vet_phone } : null,
+    feeding: meals.length ? meals : [{ time: 'See notes', desc: specialTreatment || 'No feeding info added yet' }],
+    feedingNote: specialTreatment,
+    supplies,
+    meds,
+    emergency: get('emergency_name') ? { name: get('emergency_name'), phone: get('emergency_phone'), vetName: get('vet_name'), vetPhone: get('vet_phone') } : null,
   };
 }
 
@@ -582,8 +614,9 @@ function fetchSheet(url) {
   tryFetchWithFallbacks(url)
     .then(csvText => {
       const rows = parseCSV(csvText);
-      cats = rows.map((r, i) => rowToCat(r, i)).filter(c => c.name && c.name !== '');
-      if (cats.length === 0) throw new Error('Sheet loaded but no cat rows found. Check that your sheet has data and the correct column headers.');
+      cats = rows.map((r, i) => rowToCat(r, i)).filter(c => c.name && c.name !== 'Cat' && c.name !== '');
+      console.log('Parsed rows:', rows.length, 'First row keys:', rows[0] ? Object.keys(rows[0]) : 'none');
+      if (cats.length === 0) throw new Error('Sheet loaded (' + rows.length + ' rows) but no valid cat data found. Check browser console (F12) to see what column headers were detected.');
       currentCat = 0; currentTab = 0;
       ls.style.display = 'none';
       launchApp();
@@ -647,33 +680,31 @@ function renderCard() {
       <div class="cat-info">
         <h2>${cat.name}</h2>
         <div class="breed">${cat.breed}</div>
-        <div class="personality">${cat.personality.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+        <div class="personality">${cat.personality.slice(0,3).map(t => `<span class="tag">${t}</span>`).join('')}</div>
       </div>
       <button class="tts-btn" id="ttsBtn" onclick="speakCat()">🔊 Read Aloud</button>
     </div>
     <div class="tabs">
       <button class="tab-btn ${currentTab===0?'active':''}" onclick="selectTab(0)">🍽️ Feeding</button>
-      <button class="tab-btn ${currentTab===1?'active':''}" onclick="selectTab(1)">📦 Supplies</button>
-      <button class="tab-btn ${currentTab===2?'active':''}" onclick="selectTab(2)">💊 Health</button>
+      <button class="tab-btn ${currentTab===1?'active':''}" onclick="selectTab(1)">⭐ Special Care</button>
+      <button class="tab-btn ${currentTab===2?'active':''}" onclick="selectTab(2)">💊 Medicine</button>
     </div>
     <div class="tab-content">
+
+      <!-- FEEDING TAB: MealTime + FeedingLocation -->
       <div class="tab-panel ${currentTab===0?'active':''}">
         <div class="section-title">🍽️ Feeding Schedule</div>
         ${cat.feeding.length === 0
-          ? `<div class="error-card"><div class="emoji">🍽️</div>No feeding info yet — add it in the sheet!</div>`
+          ? `<div class="error-card"><div class="emoji">🍽️</div>No feeding info yet — add MealTime in the sheet!</div>`
           : `<div class="meal-grid">${cat.feeding.map(f => `
               <div class="meal-card" style="border-left-color:${cat.color}">
-                <div class="time">${f.time}</div>
+                <div class="time">⏰ ${f.time}</div>
                 <div class="desc">${f.desc.replace(/\n/g,'<br>')}</div>
               </div>`).join('')}</div>`}
-        ${cat.feedingNote ? `<div class="notes-box">📝 <strong>Note:</strong> ${cat.feedingNote}</div>` : ''}
-      </div>
-      <div class="tab-panel ${currentTab===1?'active':''}">
-        <div class="section-title">📦 Supply Locations</div>
-        <div class="supply-list">
-          ${cat.supplies.length === 0
-            ? `<div class="error-card"><div class="emoji">📦</div>No supplies listed yet!</div>`
-            : cat.supplies.map(s => `
+        ${cat.supplies.length > 0 ? `
+          <div class="section-title" style="margin-top:20px">📍 Feeding Location</div>
+          <div class="supply-list">
+            ${cat.supplies.map(s => `
               <div class="supply-item">
                 <div class="supply-icon">${s.icon}</div>
                 <div>
@@ -681,18 +712,36 @@ function renderCard() {
                   <div class="supply-loc">📍 ${s.loc}</div>
                 </div>
               </div>`).join('')}
-        </div>
+          </div>` : ''}
       </div>
+
+      <!-- SPECIAL CARE TAB: SpecialTreatment -->
+      <div class="tab-panel ${currentTab===1?'active':''}">
+        <div class="section-title">⭐ Special Treatment & Notes</div>
+        ${cat.feedingNote
+          ? `<div class="notes-box" style="font-size:1rem;line-height:1.8">
+               ${cat.feedingNote.split('\n').map(line => line.trim() ? `<div style="margin-bottom:8px">🐾 ${line}</div>` : '').join('')}
+             </div>`
+          : `<div class="no-meds" style="background:#FFF8E8;color:#8B6B00">
+               📝 No special treatment notes yet — add SpecialTreatment in the sheet!
+             </div>`}
+      </div>
+
+      <!-- MEDICINE TAB: Medicine -->
       <div class="tab-panel ${currentTab===2?'active':''}">
-        <div class="section-title">💊 Health & Medications</div>
+        <div class="section-title">💊 Medicine</div>
         ${cat.meds.length === 0
           ? `<div class="no-meds">✅ ${cat.name} has no current medications — healthy and happy!</div>`
           : cat.meds.map(m => `
             <div class="med-card">
               <h4>💊 ${m.name}</h4>
-              <div class="med-detail"><strong>When:</strong> ${m.schedule}<br><strong>How:</strong> ${m.note}</div>
+              <div class="med-detail">
+                ${m.schedule ? `<div><strong>When:</strong> ${m.schedule}</div>` : ''}
+                ${m.note ? `<div style="margin-top:4px"><strong>How:</strong> ${m.note}</div>` : ''}
+              </div>
             </div>`).join('')}
       </div>
+
     </div>`;
 }
 
@@ -702,16 +751,16 @@ function speakCat() {
   const cat = cats[currentCat];
   let text = '';
   if (currentTab === 0) {
-    text = `Feeding guide for ${cat.name}. ${cat.breed}. Personality: ${cat.personality.join(', ')}. `;
-    text += cat.feeding.map(f => `At ${f.time}: ${f.desc.replace(/\n/g, ', ')}.`).join(' ');
-    if (cat.feedingNote) text += ` Note: ${cat.feedingNote}`;
+    text = `Feeding guide for ${cat.name}. Age and color: ${cat.breed}. `;
+    text += cat.feeding.map(f => `Meal time: ${f.time}. ${f.desc.replace(/\n/g, ', ')}.`).join(' ');
+    if (cat.supplies.length) text += ' Feeding location: ' + cat.supplies.map(s => s.loc).join(', ') + '.';
   } else if (currentTab === 1) {
-    text = `Supply locations for ${cat.name}. `;
-    text += cat.supplies.map(s => `${s.label}: ${s.loc}.`).join(' ');
+    text = `Special treatment notes for ${cat.name}. `;
+    text += cat.feedingNote ? cat.feedingNote.replace(/\n/g, '. ') : `${cat.name} has no special treatment notes.`;
   } else {
-    text = `Health notes for ${cat.name}. `;
-    if (cat.meds.length === 0) text += `${cat.name} has no medications and is in good health!`;
-    else text += cat.meds.map(m => `${m.name}: ${m.schedule}. ${m.note}`).join(' ');
+    text = `Medicine for ${cat.name}. `;
+    if (cat.meds.length === 0) text += `${cat.name} has no current medications.`;
+    else text += cat.meds.map(m => `${m.name}. ${m.schedule}. ${m.note}`).join('. ');
   }
   const utter = new SpeechSynthesisUtterance(text);
   utter.rate = 0.92; utter.pitch = 1.05;
